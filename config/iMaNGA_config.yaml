@@ -1,0 +1,131 @@
+likelihood:
+  fit_image: True
+  fit_spec: True
+
+galaxy_params:
+  obs_type: IFU
+  log10_Mstar:
+  log10_Mstar_err:
+  vmap_type:
+  Rmax_G:
+  Rmax_ST:
+
+TFprior:
+  use_TFprior: True
+  a: null
+  b: null
+  sigmaTF_intr: null
+  sigmaTF: null  # this includes the uncertainty from mass estimates
+  log10_vTF: null
+  relation: null #'lambda a, b, log10_Mstar: (log10_Mstar - a)/b'
+
+
+params:
+  shared_params:
+    g1:
+      prior:
+        min: -0.05
+        max: 0.05
+      latex_name: \gamma_1
+
+    g2:
+      prior:
+        min: -0.05
+        max: 0.05
+      latex_name: \gamma_2
+
+    vcirc:
+      prior:
+        norm:
+          loc: 'TFprior.log10_vTF'
+          scale: 'TFprior.sigmaTF'
+      latex_name:  v_{\mathrm{circ}}
+
+    cosi:
+      prior:
+        min: 0
+        max: 1
+      latex_name: \cos i
+
+    theta_int:
+      prior:
+        min: 0
+        max: '2*np.pi'
+      latex_name: \theta_{\mathrm{int}}
+
+    vscale:
+      prior:
+        min: 0.1
+        max: 20
+      latex_name: r_{\mathrm{vscale}}
+
+    r_hl_disk:
+      prior:
+        min: 0.1
+        max: 20
+      latex_name: r_{\mathrm{hl}}^{\mathrm{disk}}
+
+#     r_hl_bulge:
+#       prior:
+#         min: 0.1
+#         max: 1
+#       latex_name: r_{\mathrm{hl}}^{\mathrm{bulge}}
+
+#     dx_disk:
+#       prior:
+#         min: -0.2
+#         max: 0.2
+#       latex_name: \delta_x^{\mathrm{disk}}
+
+#     dy_disk:
+#       prior:
+#         min: -0.2
+#         max: 0.2
+#       latex_name: \delta_y^{\mathrm{disk}}
+
+#     dx_bulge:
+#       prior:
+#         min: -0.2
+#         max: 0.2
+#       latex_name: \delta_x^{\mathrm{bulge}}
+
+#     dy_bulge:
+#       prior:
+#         min: -0.2
+#         max: 0.2
+#       latex_name: \delta_y^{\mathrm{bulge}}
+
+    flux:
+      prior:
+        min: 3
+        max: 5
+      latex_name: \mathrm{F}
+
+#     flux_bulge:
+#       prior:
+#         min: 0
+#         max: 10
+#       latex_name: \mathrm{F}_{\mathrm{bulge}}
+
+  line_params:
+    v_0:
+      prior:
+        min: -100
+        max: 100
+      latex_name: v_0
+
+#     dx_vel:
+#       prior:
+#         min: -0.3
+#         max: 0.3
+#       latex_name: \delta_x^{\mathrm{vel}}
+
+#     dy_vel:
+#       prior:
+#         min: -0.3
+#         max: 0.3
+#       latex_name: \delta_x^{\mathrm{vel}}
+
+# Don't need most of the time
+fid_params: null
+set_non_analytic_prior: null
