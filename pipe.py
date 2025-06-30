@@ -28,10 +28,17 @@ import getdist
 '''
 PAFit and citation can be found here: https://pypi.org/project/pafit/
 '''
+'''
+To Do:
+A lot of the time shear parameters either hit one prior or both, find out what's causing this
+Find a way/write code to estimate velocity scale radius/Rmax_ST if necessary
+Maybe create a function to make priors narrower for known values like cosi
+Go back to rotator_sample and bugfix more thoroughly
+
+'''
 
 #iMaNGA_VAC.fits can be downloaded from here: https://www.tng-project.org/data/docs/specifications/#sec5_4
 hdu_lst = fits.open('/home/acolarelli/path/to/venv/bin/kl_measurement-manga/iMaNGA_vac.fits')
-
 
 with open('rotator_indices.txt', 'r') as file:
     rotator_indices = file.readlines()
@@ -39,7 +46,7 @@ rotator_indices = list(map(int, rotator_indices))
 
 gen_info = hdu_lst[1].data
 image_morphology = hdu_lst[2].data
-spatial_info = hdu_lst[3].data
+spatial_info = hdu_lst[3].data #position of each spaxel, [0] for arcsec and [1] for r_eff
 kinematics = hdu_lst[4].data #kinematics[0]: Stellar velocity along the LOS (km/s) and kinematics[1]: Stellar velocity dispersion along the LOS (km/s)
 
 inclinations = image_morphology['inc_kin'] #Kinematics-dependent galaxy inclination, assuming the kinematics provided by TNG50 (deg)
@@ -50,12 +57,12 @@ snr = image_morphology['snr_2Dsersic_fit']
 st_mass = gen_info['TNG_tot_stellar_mass'] #total stellar mass in units of 10^10 solar masses
 zshift = gen_info['obs_redshift']
 
+''''''
 
 def get_FOV_mask(gal):
     imanga_FOV = spatial_info[3,gal,:,:]
     FOV_mask = np.where(imanga_FOV>-1, True, False)
-    return FOV_mask
-
+    return FOV_mask #this had a use in an older draft, keeping for now just in case
 
 def get_log10_m_star(gal):
     #iMaNGA gives mass in units of 10^10 solar masses
@@ -68,6 +75,7 @@ def get_vmap_data(gal):
     kin = np.ma.masked_invalid(kinematics[0,gal,:,:])
     return kin
 
+''''''
 
 def get_mock_params(gal):
     cosi = float(np.cos(np.radians(float(inclinations[gal])))) 
@@ -89,7 +97,8 @@ def get_mock_params(gal):
     #Making a rough estimate for v_circ (unsure how to get vscale radius)
     vcirc_est = np.nanmedian(np.abs(vels)) / np.arctan(1.)
 
-    #Printing some given values
+
+    #Printing some known or given values for later reference
     print("Theta_int (rad): " + str(np.radians(pos_angle)))
     print("i (deg): "+str(inclinations[gal]))
     print("cosi: " + str(cosi))
@@ -124,24 +133,22 @@ def param_to_dict(mock_params):
     updated_dict = params.gen_param_dict(par_names=mock_params.keys(), par_values=mock_params.values())
     return updated_dict
 
-
-
-
-
+''''''
 
 def write_data_info(gal_index, run_num, save_path = "/home/acolarelli/test_chain/"):
+    
     mock_params = get_mock_params(gal_index)
     updated_dict = param_to_dict(mock_params)
     #FOV_mask = get_FOV_mask(gal_index)
 
+    #Create directory to save data
     folder_name = "galaxy" + str(gal_index)
     save_path1 = save_path+folder_name
     save_path2 = save_path + folder_name + "/run"+ str(run_num)
-
     os.makedirs(save_path2, exist_ok=True)
 
     REDSHIFT = get_redshift(gal_index)
-    LOG10_MSTAR = float(np.log10(st_mass[gal_index])) + 10.
+    LOG10_MSTAR = get_log10_m_star(gal_index) #float(np.log10(st_mass[gal_index])) + 10.
     LOG10_MSTAR_ERR = 0.0
     RA_OBJ, DEC_OBJ = 180.0*u.deg, 32.0*u.deg
 
@@ -153,6 +160,7 @@ def write_data_info(gal_index, run_num, save_path = "/home/acolarelli/test_chain
     IMAGE_PSF_FWHM = 2.5 # arcsec
     '''
     https://arxiv.org/pdf/2203.11575
+    iMaNGA "paper I"
 
     "The typical fibre-convolved point spread function 
     (PSF) has full width at half-maximum (FWHM) of 2.5 arcsec (Law 
@@ -179,10 +187,8 @@ def write_data_info(gal_index, run_num, save_path = "/home/acolarelli/test_chain
                 'RA': RA_OBJ.value, # not required, but should they be changed anyway?
                 'Dec': DEC_OBJ.value}
 
-
-
     image_model = ImageModel(meta_image=meta_image)
-    image_data = image_model.get_image(updated_dict['shared_params'])
+    image_data = image_model.get_image(updated_dict['shared_params']) #Create galaxy image from input data
     image_var = image_data + SKY_VAR_IMAGE
 
     # Set variance to match SNR
@@ -221,15 +227,11 @@ def write_data_info(gal_index, run_num, save_path = "/home/acolarelli/test_chain
 
     meta_vmap = {'RA_grid': RA_grid,
                 'Dec_grid': Dec_grid}
-
-    vmap_model = IFUModel(meta_param=meta_vmap)
-    this_line_dict = {**updated_dict['shared_params'], **updated_dict['stellar_params']}
     vmap_data = kin
     vmap_var = VMAP_VAR
 
     # Set variance to match SNR
     vmap_var = Mock._set_snr(vmap_data, vmap_var, VMAP_SNR, 'image', verbose=False)
-    #np.savetxt(f"{save_path2}/vmap_var.txt", vmap_var)
 
     plt.figure(figsize=(6, 5))
 
@@ -253,6 +255,7 @@ def write_data_info(gal_index, run_num, save_path = "/home/acolarelli/test_chain
     plt.colorbar()
     plt.savefig(f"{save_path2}/fov_mask.png")
     '''
+
     plt.clf()
 
     plt.imshow(vmap_var)
@@ -273,7 +276,7 @@ def write_data_info(gal_index, run_num, save_path = "/home/acolarelli/test_chain
     data_info['galaxy']['Dec'] = DEC_OBJ
     data_info['galaxy']['redshift'] = REDSHIFT
     data_info['galaxy']['log10_Mstar'] = LOG10_MSTAR
-    data_info['galaxy']['Rmax_ST'] = 2  # This is required when using the TF relation
+    data_info['galaxy']['Rmax_ST'] = 2 #Need to find a way to get this
     data_info['vmap'] = {}
 
 
@@ -281,7 +284,7 @@ def write_data_info(gal_index, run_num, save_path = "/home/acolarelli/test_chain
     vmap_stellar['par_meta'] = meta_vmap
 
     vmap_stellar['data'] = vmap_data
-    vmap_stellar['var'] = vmap_var # Add error of 5km/s in quadrature
+    vmap_stellar['var'] = vmap_var
     vmap_stellar['mask'] = np.ones_like(vmap_data)
 
 
@@ -289,7 +292,7 @@ def write_data_info(gal_index, run_num, save_path = "/home/acolarelli/test_chain
     del data_info['image']['par_meta']['wcs']
     data_info['mock_params'] = mock_params
 
-    joblib.dump(data_info, f'{save_path1}/mock_data_test.pkl')
+    joblib.dump(data_info, f'{save_path1}/mock_data.pkl')
 
 
 
@@ -297,7 +300,9 @@ def write_data_info(gal_index, run_num, save_path = "/home/acolarelli/test_chain
 
 
 
-def sampler(gal_index, run_num, save_path = "/home/acolarelli/test_chain/"):
+def sampler(gal_index, run_num, save_path = "/home/acolarelli/test_chain/", 
+            config_path = '/home/acolarelli/path/to/venv/bin/kl_measurement-manga/config/iMaNGA_config.yaml'):
+    
     folder_name = "galaxy" + str(gal_index)
     save_path1 = save_path+folder_name
     save_path2 = save_path+folder_name+"/run"+ str(run_num)
@@ -321,15 +326,14 @@ def sampler(gal_index, run_num, save_path = "/home/acolarelli/test_chain/"):
 
     plt.rc('figure', dpi=300)
 
-    data_info = joblib.load(f'{save_path1}/mock_data_test.pkl')
+    data_info = joblib.load(f'{save_path1}/mock_data.pkl')
 
     # Re-instantiate the galsim WCS object using the astropy wcs
     ap_wcs = data_info['image']['par_meta']['ap_wcs']
     data_info['image']['par_meta']['wcs'] = galsim.AstropyWCS(wcs=ap_wcs)
 
     # Load YAML file for config
-    #This file path does need to be changed
-    with open('/home/acolarelli/path/to/venv/bin/kl_measurement-manga/config/iMaNGA_config.yaml', 'r') as stream:
+    with open(config_path, 'r') as stream:
             config = yaml.safe_load(stream)
 
     config['TFprior']['log10_vTF'] = np.log10(data_info['mock_params']['shared_params-vcirc'])
@@ -455,17 +459,22 @@ def sampler(gal_index, run_num, save_path = "/home/acolarelli/test_chain/"):
     with open( f'{save_path2}/config.yaml', 'w') as file:
         yaml.dump(inference.config.__repr__, file)
 
-def run_pipeline(gal_index, run_num=0, save_path = "/home/acolarelli/test_chain/", preserve_old_runs = False):
+def run_pipeline(gal_index, run_num=0, save_path = "/home/acolarelli/test_chain/", 
+                 config_path = '/home/acolarelli/path/to/venv/bin/kl_measurement-manga/config/iMaNGA_config.yaml', preserve_old_runs = False):
     print("Galaxy#: "+str(gal_index))
     if preserve_old_runs:
         new_run_num = 0
         while new_run_num <= run_num:
             new_run_num += 1
         run_num = new_run_num
-    write_data_info(gal_index,run_num,save_path)
-    sampler(gal_index,run_num,save_path)
+    write_data_info(gal_index,run_num=run_num,save_path=save_path)
+    sampler(gal_index,run_num=run_num,save_path=save_path,config_path=config_path)
 
 
+''''''
+#Note that the file path for the iMaNGA VAC at the start of the code needs to be manually changed for the script to run. 
+#Save paths and config file path can be changed below.
+''''''
 #Change the list index to change which galaxy is being put in, or manually choose a galaxy index from rotator_indices.txt
-run_pipeline(rotator_indices[10], preserve_old_runs=True)
+run_pipeline(rotator_indices[14], preserve_old_runs=True)
 hdu_lst.close()
