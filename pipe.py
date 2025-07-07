@@ -94,7 +94,7 @@ def get_mock_params(gal):
     vsys = vsys_correction + np.nanmedian(kinematics[0,gal,spax_coords[0],spax_coords[1]])
     n = sersics[gal]
 
-    #Making a rough estimate for v_circ (unsure how to get vscale radius)
+    #Making a rough estimate for v_circ (unsure if this is right or how to get vscale radius, but curve should flatten out at r = r_vscale ?)
     vcirc_est = np.nanmedian(np.abs(vels)) / np.arctan(1.)
 
 
@@ -104,6 +104,11 @@ def get_mock_params(gal):
     print("cosi: " + str(cosi))
     print("r_hl: "+str(r_hl))
     print("PAFit vsys: "+str(vsys))
+    print("Sersic: "+str(n))
+
+
+    #As a sanity check because rotator code is acting up
+    print("T-morph: "+str(t_morph[gal]))
 
     mocks = {
     'shared_params-g1': 0.,
@@ -476,5 +481,6 @@ def run_pipeline(gal_index, run_num=0, save_path = "/home/acolarelli/test_chain/
 #Save paths and config file path can be changed below.
 ''''''
 #Change the list index to change which galaxy is being put in, or manually choose a galaxy index from rotator_indices.txt
-run_pipeline(rotator_indices[14], preserve_old_runs=True)
+run_pipeline(rotator_indices[41], preserve_old_runs=True)
+file.close()
 hdu_lst.close()
