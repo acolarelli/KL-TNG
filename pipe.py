@@ -25,11 +25,14 @@ import yaml
 import corner
 import getdist
 
+import requests
+
 '''
 PAFit and citation can be found here: https://pypi.org/project/pafit/
 '''
 '''
 To Do:
+Determine if there is a better way to "flatten" the datacube than just crudely summing over the frequency axis
 A lot of the time shear parameters either hit one prior or both, find out what's causing this
 Find a way/write code to estimate velocity scale radius/Rmax_ST if necessary
 Maybe create a function to make priors narrower for known values like cosi
@@ -39,6 +42,9 @@ Go back to rotator_sample and bugfix more thoroughly
 
 #iMaNGA_VAC.fits can be downloaded from here: https://www.tng-project.org/data/docs/specifications/#sec5_4
 hdu_lst = fits.open('/home/acolarelli/path/to/venv/bin/kl_measurement-manga/iMaNGA_vac.fits')
+
+baseUrl = 'http://www.tng-project.org/api/'
+headers = {"api-key":"f419ad81a31806df57104c83a5bfa2d5"}
 
 with open('rotator_indices.txt', 'r') as file:
     rotator_indices = file.readlines()
@@ -76,6 +82,24 @@ def get_vmap_data(gal):
     return kin
 
 ''''''
+
+def get(path, params=None):
+    # make HTTP GET request to path
+    r = requests.get(path, params=params, headers=headers)
+
+    # raise exception if response code is not HTTP SUCCESS (200)
+    r.raise_for_status()
+
+    if r.headers['content-type'] == 'application/json':
+        return r.json() # parse json responses automatically
+
+    if 'content-disposition' in r.headers:
+        filename = r.headers['content-disposition'].split("filename=")[1]
+        with open(filename, 'wb') as f:
+            f.write(r.content)
+        return filename # return the filename string
+
+    return r
 
 def get_mock_params(gal):
     cosi = float(np.cos(np.radians(float(inclinations[gal])))) 
@@ -140,11 +164,40 @@ def param_to_dict(mock_params):
 
 ''''''
 
-def write_data_info(gal_index, run_num, save_path = "/home/acolarelli/test_chain/"):
+def write_data_info(gal_index, run_num, file_path = "/home/acolarelli/", save_path = "/home/acolarelli/test_chain/"):
     
     mock_params = get_mock_params(gal_index)
-    updated_dict = param_to_dict(mock_params)
+    #updated_dict = param_to_dict(mock_params)
     #FOV_mask = get_FOV_mask(gal_index)
+
+
+    snap_id = gen_info['TNG_snap_id'][gal_index]
+    snap = snap_id[:2]
+    gal_id = snap_id[3:]
+    #print(snap)
+    #print(gal_id)
+    #print(snap_id)
+
+
+
+    #Check if desired datacube is already downloaded, and if not download from TNG
+    url = "http://www.tng-project.org/api/TNG50-1/snapshots/"+str(snap)+"/subhalos/"+str(gal_id)+"/imanga.fits"
+    if os.path.exists(file_path+"/"+str(snap)+"_"+str(gal_id)+".fits"):
+        print("Existing IFU datacube found")
+        data0 = fits.open(file_path+"/"+str(snap)+"_"+str(gal_id)+".fits")[0]
+    else:
+        print("IFU datacube not found, pulling from TNG site...") 
+        r = get(url)
+        data0 = fits.getdata(r)
+        print("Datacube downloaded")
+
+    
+
+    #Sum over the wavelength/frequency axis to "flatten" the datacube and produce a 2D image
+    datacube = data0.data
+    flat_data = np.nansum(datacube, axis=0)
+
+
 
     #Create directory to save data
     folder_name = "galaxy" + str(gal_index)
@@ -152,14 +205,17 @@ def write_data_info(gal_index, run_num, save_path = "/home/acolarelli/test_chain
     save_path2 = save_path + folder_name + "/run"+ str(run_num)
     os.makedirs(save_path2, exist_ok=True)
 
+
+    
+
     REDSHIFT = get_redshift(gal_index)
     LOG10_MSTAR = get_log10_m_star(gal_index) #float(np.log10(st_mass[gal_index])) + 10.
     LOG10_MSTAR_ERR = 0.0
     RA_OBJ, DEC_OBJ = 180.0*u.deg, 32.0*u.deg
 
     #OUTPUT SETTINGS
-    IMAGE_SNR = 80 #snr[gal_index]?
-    IMAGE_SHAPE = (150, 150) # (x, y)
+    IMAGE_SNR = snr[gal_index]
+    IMAGE_SHAPE = flat_data.shape #(150, 150) # (x, y)
     SKY_VAR_IMAGE = np.ones(IMAGE_SHAPE)*1500
     IMAGE_PIX_SCALE = 0.5 # arcsec/pix
     IMAGE_PSF_FWHM = 2.5 # arcsec
@@ -192,18 +248,18 @@ def write_data_info(gal_index, run_num, save_path = "/home/acolarelli/test_chain
                 'RA': RA_OBJ.value, # not required, but should they be changed anyway?
                 'Dec': DEC_OBJ.value}
 
-    image_model = ImageModel(meta_image=meta_image)
-    image_data = image_model.get_image(updated_dict['shared_params']) #Create galaxy image from input data
+    #image_model = ImageModel(meta_image=meta_image)
+    image_data = flat_data #image_model.get_image(updated_dict['shared_params']) #Create galaxy image from input data
     image_var = image_data + SKY_VAR_IMAGE
-
+    
     # Set variance to match SNR
-    image_var = Mock._set_snr(image_data, image_var, IMAGE_SNR, 'image', verbose=False)
+    #image_var = Mock._set_snr(image_data, image_var, IMAGE_SNR, 'image', verbose=False) #Is this still needed? Seem to get better results without this
 
     fig = plt.figure(figsize=(12, 6))
 
     ax = fig.add_subplot(121)
     ax.imshow(image_data)
-    ax.set_title('Simulated Image', fontsize=12)
+    ax.set_title('TNG Image Data', fontsize=12)
 
     ax = fig.add_subplot(122, projection=AP_WCS)
     lon = ax.coords[0]
@@ -297,13 +353,9 @@ def write_data_info(gal_index, run_num, save_path = "/home/acolarelli/test_chain
     del data_info['image']['par_meta']['wcs']
     data_info['mock_params'] = mock_params
 
-    joblib.dump(data_info, f'{save_path1}/mock_data.pkl')
+    joblib.dump(data_info, f'{save_path1}/data_info.pkl')
 
-
-
-
-
-
+''''''
 
 def sampler(gal_index, run_num, save_path = "/home/acolarelli/test_chain/", 
             config_path = '/home/acolarelli/path/to/venv/bin/kl_measurement-manga/config/iMaNGA_config.yaml'):
@@ -331,7 +383,7 @@ def sampler(gal_index, run_num, save_path = "/home/acolarelli/test_chain/",
 
     plt.rc('figure', dpi=300)
 
-    data_info = joblib.load(f'{save_path1}/mock_data.pkl')
+    data_info = joblib.load(f'{save_path1}/data_info.pkl')
 
     # Re-instantiate the galsim WCS object using the astropy wcs
     ap_wcs = data_info['image']['par_meta']['ap_wcs']
@@ -464,23 +516,26 @@ def sampler(gal_index, run_num, save_path = "/home/acolarelli/test_chain/",
     with open( f'{save_path2}/config.yaml', 'w') as file:
         yaml.dump(inference.config.__repr__, file)
 
-def run_pipeline(gal_index, run_num=0, save_path = "/home/acolarelli/test_chain/", 
+def run_pipeline(gal_index, run_num=0, file_path="/home/acolarelli", save_path = "/home/acolarelli/test_chain/", 
                  config_path = '/home/acolarelli/path/to/venv/bin/kl_measurement-manga/config/iMaNGA_config.yaml', preserve_old_runs = False):
+    #Preserve old runs doesn't work right now, leave as false and just change run num until fixed
     print("Galaxy#: "+str(gal_index))
     if preserve_old_runs:
         new_run_num = 0
         while new_run_num <= run_num:
             new_run_num += 1
         run_num = new_run_num
-    write_data_info(gal_index,run_num=run_num,save_path=save_path)
-    sampler(gal_index,run_num=run_num,save_path=save_path,config_path=config_path)
+    else:
+        new_run_num = run_num
+    write_data_info(gal_index,run_num=new_run_num,file_path=file_path, save_path=save_path)
+    sampler(gal_index,run_num=new_run_num,save_path=save_path,config_path=config_path)
 
 
 ''''''
 #Note that the file path for the iMaNGA VAC at the start of the code needs to be manually changed for the script to run. 
-#Save paths and config file path can be changed below.
+#Save paths, datacube file path, and config file path can be changed below.
 ''''''
 #Change the list index to change which galaxy is being put in, or manually choose a galaxy index from rotator_indices.txt
-run_pipeline(rotator_indices[41], preserve_old_runs=True)
+run_pipeline(rotator_indices[49], run_num=1)
 file.close()
 hdu_lst.close()
