@@ -491,7 +491,7 @@ def write_data_info(gal_index, run_num, file_path = "/home/acolarelli/", save_pa
 
     #Plot non-convolved image (as a sanity check)
     plt.imshow(flat_data)
-    plt.colorbar(label="Pre-convolution data (photons/s/m^2)")
+    plt.colorbar(label="Pre-convolution data (erg/s/m^2)")
     plt.savefig(f"{save_path2}/flat_data.png")
 
     plt.clf()
@@ -735,6 +735,6 @@ def run_pipeline(gal_index, run_num=0, file_path="/home/acolarelli", save_path =
 ''''''
 
 #Change the list index to change which galaxy is being put in, or manually choose a galaxy index from rotator_indices.txt
-run_pipeline(rotator_indices[45], run_num=1)
+run_pipeline(rotator_indices[2], run_num=1)
 file.close()
 hdu_lst.close()
