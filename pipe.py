@@ -84,6 +84,8 @@ psfr = hdu_psf[:,:, 1]
 psfi = hdu_psf[:,:, 2]
 psfz = hdu_psf[:,:, 3]
 
+np.savetxt('psfg.txt', psfg)
+
 catalog = fits.open("/home/acolarelli/path/to/venv/bin/kl_measurement-manga/iMaNGA_catalog.fits")
 wave_rest = np.float64(catalog[2].data)
 
@@ -140,6 +142,13 @@ def flux_to_photon(waves, image):
     for wv in range(len(waves)-1):
         e_photon = 1.98644568327e-08/waves[wv] #E = hc/lambda, hc in erg*angstrom
         im[wv,:,:] = image[wv,:,:]/e_photon
+    return im
+
+def var_flux_to_photon(waves, image):
+    im = image.copy()
+    for wv in range(len(waves)-1):
+        e_photon = 1.98644568327e-08/waves[wv] #E = hc/lambda, hc in erg*angstrom
+        im[wv,:,:] = image[wv,:,:]/(e_photon**2)
     return im
 
 ''''''
@@ -237,7 +246,7 @@ def convolve_psf(gal_index, datacube):
     print("Converting flux density to photon count...")
     print("Convolving finished")
     convolve_img = flux_to_photon(wave, convolve_img)
-    convolve_noise = flux_to_photon(wave, convolve_noise)
+    convolve_noise = var_flux_to_photon(wave, convolve_noise)
     convolve_flat = np.nansum(convolve_img, axis=0)
     noise_flat = np.nansum(convolve_noise,axis=0)
     return noise_flat, convolve_flat    
@@ -288,9 +297,9 @@ def get_mock_params(gal):
     'shared_params-r_hl_disk': r_hl,  # in arcsec
     'shared_params-dx_disk': 0.,  # fraction of r_hl_disk
     'shared_params-dy_disk': 0.,  # fraction of r_hl_disk
-    'shared_params-flux': 4e-12,  # arbitrary units
+    'shared_params-flux': 4.,  # arbitrary units
     'shared_params-r_hl_bulge': 0.,  # in arcsec
-    'shared_params-flux_bulge': 1e-12,  # arbitrary units
+    'shared_params-flux_bulge': 1.,  # arbitrary units
     'shared_params-dx_bulge': 0.,  # fraction of r_hl_disk
     'shared_params-dy_bulge': 0.,  # fraction of r_hl_disk
     'shared_params-vscale': r_hl,  # in arcsec #not always a great estimate, fix later
@@ -452,7 +461,7 @@ def write_data_info(gal_index, run_num, file_path = "/home/acolarelli/", save_pa
     VMAP_SHAPE = kin.shape  # Dec, RA
     VMAP_PIX_SCALE = 0.5  # arcsec/pix
     VMAP_SNR = snr[gal_index] #?
-    VMAP_VAR = np.ones(kin.shape)*20 #pranjal says 20km/s, overplot zero shear with current fit to investigate degeneracy structure
+    VMAP_VAR = np.ones(kin.shape)*(20) #pranjal says 20km/s, overplot zero shear with current fit to investigate degeneracy structure
 
 
     # Grids must be zero centered
@@ -465,7 +474,7 @@ def write_data_info(gal_index, run_num, file_path = "/home/acolarelli/", save_pa
     vmap_var = VMAP_VAR
 
     # Set variance to match SNR
-    #vmap_var = Mock._set_snr(vmap_data, vmap_var, VMAP_SNR, 'image', verbose=True) #Is this still needed? Is the velocity map SNR the same as the image SNR?
+    vmap_var = Mock._set_snr(vmap_data, vmap_var, VMAP_SNR, 'image', verbose=True) #Is this still needed? Is the velocity map SNR the same as the image SNR?
 
 
     print(np.nansum(image_data))
@@ -566,10 +575,16 @@ def sampler(gal_index, run_num, save_path = "/home/acolarelli/test_chain/",
     #Load data info
     data_info = joblib.load(f'{save_path1}/data_info.pkl')
 
+    #print(data_info)
+
     # Re-instantiate the galsim WCS object using the astropy wcs
     ap_wcs = data_info['image']['par_meta']['ap_wcs']
     data_info['image']['par_meta']['wcs'] = galsim.AstropyWCS(wcs=ap_wcs)
-
+    '''
+    with open('data_info.txt', 'w') as file:
+        for item in data_info:
+            file.write(str(item)+"\n")
+    '''
     # Load YAML file for config
     with open(config_path, 'r') as stream:
             config = yaml.safe_load(stream)
@@ -735,6 +750,6 @@ def run_pipeline(gal_index, run_num=0, file_path="/home/acolarelli", save_path =
 ''''''
 
 #Change the list index to change which galaxy is being put in, or manually choose a galaxy index from rotator_indices.txt
-run_pipeline(rotator_indices[2], run_num=1)
+run_pipeline(rotator_indices[9], run_num=2)
 file.close()
 hdu_lst.close()
